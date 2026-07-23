@@ -18,9 +18,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Универсальная загрузка модели
+
+# Загрузка модели и метаданных
 @st.cache_resource
 def load_model():
+    """
+    Загружает обученную модель из файла fraud_model_fix.pkl.
+
+    Returns:
+        model: Загруженная модель машинного обучения (XGBClassifier).
+
+    Raises:
+        st.error: Если модель не найдена или не может быть загружена.
+    """
     model_path = 'fraud_model_fix.pkl'
     if os.path.exists(model_path):
         try:
@@ -29,13 +39,22 @@ def load_model():
             return model
         except Exception as e:
             st.warning(f"Загрузка через joblib не удалась: {e}")
-    # Пробуем другие форматы...
+
     st.error("Не удалось загрузить модель. Проверьте файл.")
     st.stop()
 
-# Загрузка уникальных значений и типов колонок
+
 @st.cache_data
 def load_unique_values():
+    """
+    Загружает уникальные значения категориальных признаков из JSON-файла.
+
+    Returns:
+        dict: Словарь {название_колонки: [список_уникальных_значений]}.
+
+    Raises:
+        st.error: Если файл unique_values.json не найден.
+    """
     json_path = 'unique_values.json'
     if not os.path.exists(json_path):
         st.error("Файл unique_values.json не найден. Запустите generate_unique_values.py.")
@@ -43,8 +62,18 @@ def load_unique_values():
     with open(json_path, 'r') as f:
         return json.load(f)
 
+
 @st.cache_data
 def load_columns_and_types():
+    """
+    Загружает информацию о колонках датасета: список признаков и типы числовых полей.
+
+    Returns:
+        tuple: (feature_cols_raw, col_types, cat_cols)
+            - feature_cols_raw (list): Список всех признаков (до one-hot кодирования).
+            - col_types (dict): Словарь {колонка: тип} для числовых полей ('int' или 'float').
+            - cat_cols (list): Список категориальных колонок.
+    """
     df_sample = pd.read_csv('transactions.csv')
     exclude_cols = ['transaction_id', 'customer_id', 'transaction_time', 'is_fraud']
     feature_cols_raw = [c for c in df_sample.columns if c not in exclude_cols]
@@ -59,8 +88,13 @@ def load_columns_and_types():
             col_types[c] = 'float'
     return feature_cols_raw, col_types, cat_cols
 
+
 # Работа с БД
 def init_db():
+    """
+    Инициализирует базу данных SQLite.
+    Создаёт таблицу predictions, если она ещё не существует.
+    """
     conn = sqlite3.connect('fraud_predictions.db')
     c = conn.cursor()
     c.execute('''
@@ -77,7 +111,18 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def save_prediction(transaction_id, prediction, probability, threshold, input_data):
+    """
+    Сохраняет результат предсказания в базу данных.
+
+    Args:
+        transaction_id (str): Идентификатор транзакции.
+        prediction (int): Предсказанный класс (0 или 1).
+        probability (float): Вероятность мошенничества.
+        threshold (float): Использованный порог классификации.
+        input_data (dict): Входные данные транзакции.
+    """
     conn = sqlite3.connect('fraud_predictions.db')
     c = conn.cursor()
     c.execute(
@@ -88,15 +133,43 @@ def save_prediction(transaction_id, prediction, probability, threshold, input_da
     conn.commit()
     conn.close()
 
+
 def load_history(limit=200):
+    """
+    Загружает историю предсказаний из базы данных.
+
+    Args:
+        limit (int, optional): Максимальное количество записей. По умолчанию 200.
+
+    Returns:
+        pd.DataFrame: DataFrame с историей предсказаний.
+    """
     conn = sqlite3.connect('fraud_predictions.db')
     df = pd.read_sql(f"SELECT * FROM predictions ORDER BY timestamp DESC LIMIT {limit}", conn)
     conn.close()
     return df
 
-#  Функция предсказания с One-Hot (drop_first=True)
+
+# Функция предсказания
 def predict_transactions(model, df, threshold=0.5):
-    # Имена признаков, ожидаемых моделью (после one-hot)
+    """
+    Выполняет предсказание для набора транзакций.
+
+    Применяет one-hot кодирование к категориальным признакам с drop_first=True,
+    добавляет недостающие колонки и выполняет предсказание.
+
+    Args:
+        model: Обученная модель машинного обучения.
+        df (pd.DataFrame): DataFrame с исходными данными транзакций.
+        threshold (float, optional): Порог вероятности для классификации. По умолчанию 0.5.
+
+    Returns:
+        pd.DataFrame: Исходный DataFrame с добавленными колонками 'probability' и 'prediction'.
+
+    Raises:
+        st.error: Если модель не содержит информацию о признаках.
+    """
+    # Получаем имена признаков, ожидаемых моделью (после one-hot)
     if hasattr(model, 'feature_names_in_'):
         feature_cols = list(model.feature_names_in_)
     else:
@@ -129,21 +202,32 @@ def predict_transactions(model, df, threshold=0.5):
     result_df['prediction'] = preds
     return result_df
 
-#  Отображение результатов
+
+# Отображение результатов
 def display_results(df, low_color, high_color):
+    """
+    Отображает результаты предсказания в виде таблицы с цветовой кодировкой и графиков.
+
+    Args:
+        df (pd.DataFrame): DataFrame с результатами предсказания (содержит 'probability' и 'prediction').
+        low_color (float): Нижняя граница для зелёного цвета.
+        high_color (float): Верхняя граница для красного цвета.
+    """
     st.subheader("Результаты предсказания")
     df_display = df.reset_index(drop=True)
     df_display.insert(0, '№', df_display.index + 1)
 
     def get_color(prob):
+        """Возвращает цвет в зависимости от вероятности."""
         if prob < low_color:
-            return '#90EE90'
+            return '#90EE90'  # зелёный
         elif prob < high_color:
-            return '#FFA500'
+            return '#FFA500'  # оранжевый
         else:
-            return '#FF6B6B'
+            return '#FF6B6B'  # красный
 
     def highlight_rows(row):
+        """Применяет цвет к строкам таблицы."""
         prob = row['probability']
         color = get_color(prob)
         styles = []
@@ -157,6 +241,7 @@ def display_results(df, low_color, high_color):
     styled = df_display.style.apply(highlight_rows, axis=1)
     st.dataframe(styled, use_container_width=True)
 
+    # Статистика
     total = len(df)
     fraud_count = df['prediction'].sum()
     col1, col2, col3 = st.columns(3)
@@ -167,7 +252,9 @@ def display_results(df, low_color, high_color):
     with col3:
         st.metric("Доля мошеннических", f"{fraud_count / total * 100:.2f}%")
 
+    # Графики
     st.subheader("Визуализация")
+
     fig_hist = px.histogram(df, x='probability', nbins=30,
                             title="Распределение вероятностей мошенничества",
                             color_discrete_sequence=['#1f77b4'])
@@ -179,6 +266,7 @@ def display_results(df, low_color, high_color):
                      color_discrete_sequence=['#2ca02c', '#d62728'])
     st.plotly_chart(fig_pie, use_container_width=True)
 
+    # Дополнительные графики по категориям
     if 'merchant_category' in df.columns:
         fig_bar = px.bar(
             df.groupby('merchant_category')['prediction'].mean().reset_index(),
@@ -188,6 +276,7 @@ def display_results(df, low_color, high_color):
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
+    # Важность признаков
     if hasattr(st.session_state, 'model') and hasattr(st.session_state.model, 'feature_importances_'):
         st.subheader("Важность признаков (используется модель XGBClassifier)")
         model = st.session_state.model
@@ -197,7 +286,7 @@ def display_results(df, low_color, high_color):
             if len(importances) == len(feature_cols):
                 imp_df = pd.DataFrame({'Признак': feature_cols, 'Важность': importances})
                 imp_df = imp_df.sort_values('Важность', ascending=False).head(15)
-                imp_df = imp_df.iloc[::-1]
+                imp_df = imp_df.iloc[::-1]  # самый важный признак сверху
                 fig_imp = px.bar(imp_df, x='Важность', y='Признак', orientation='h',
                                  title="Топ-15 важных признаков")
                 st.plotly_chart(fig_imp, use_container_width=True)
@@ -205,8 +294,12 @@ def display_results(df, low_color, high_color):
             st.info("Модель не предоставляет важность признаков.")
 
 
+# Описание признаков
 def show_feature_descriptions():
-    """Выводит таблицу с описанием всех признаков транзакции."""
+    """
+    Выводит таблицу с описанием всех признаков транзакции.
+    Используется в интерфейсе для справки пользователя.
+    """
     st.subheader("Описание признаков транзакции")
     with st.expander("Показать/скрыть описание признаков", expanded=True):
         descriptions = {
@@ -223,18 +316,18 @@ def show_feature_descriptions():
             "operating_system": "Операционная система",
             "browser": "Браузер",
             "card_type": "Тип карты",
-            "card_present": "Флаг физического присутствия карты",
-            "international_transaction": "Флаг международной транзакции",
-            "distance_from_home": "Расстояние от дома",
-            "previous_transaction_gap": "Время с последней транзакции",
-            "daily_transaction_count": "Количество транзакций за день",
-            "monthly_spend": "Сумма трат за месяц",
-            "risk_score": "Скоринговый балл риска",
+            "card_present": "Флаг физического присутствия карты (1 — да, 0 — нет)",
+            "international_transaction": "Флаг международной транзакции (1 — да, 0 — нет)",
+            "distance_from_home": "Расстояние от дома до места транзакции",
+            "previous_transaction_gap": "Время с последней транзакции (в часах)",
+            "daily_transaction_count": "Количество транзакций за текущий день",
+            "monthly_spend": "Общая сумма трат за месяц",
+            "risk_score": "Скоринговый балл риска (чем выше, тем рискованнее)",
             "customer_age": "Возраст клиента",
-            "account_tenure_years": "Срок обслуживания счета",
-            "merchant_risk_level": "Уровень риска мерчанта",
+            "account_tenure_years": "Срок обслуживания счета (в годах)",
+            "merchant_risk_level": "Уровень риска мерчанта (Low, Medium, High)",
             "transaction_status": "Статус транзакции",
-            "is_fraud": "Целевая переменная (флаг мошенничества)"
+            "is_fraud": "Целевая переменная (1 — мошенническая, 0 — легитимная)"
         }
         types = {
             "transaction_id": "object",
@@ -271,19 +364,26 @@ def show_feature_descriptions():
         })
         st.dataframe(df_desc, use_container_width=True, hide_index=True)
 
-#  Основная логика приложения
+
+# Основная логика приложения
 def main():
+    """
+    Основная функция приложения Streamlit.
+    Управляет режимами работы: ручной ввод, загрузка CSV, история.
+    """
     init_db()
 
+    # Загрузка модели
     model = load_model()
     st.session_state.model = model
 
+    # Загрузка метаданных
     unique_vals = load_unique_values()
     st.session_state.unique_vals = unique_vals
     cat_cols = list(unique_vals.keys())
     st.session_state.cat_cols = cat_cols
 
-    # Получаем список признаков модели (после one-hot)
+    # Получение списка признаков модели
     if hasattr(model, 'feature_names_in_'):
         feature_cols = list(model.feature_names_in_)
     else:
@@ -291,11 +391,14 @@ def main():
         st.stop()
     st.session_state.feature_cols = feature_cols
 
-    # Загружаем исходные признаки и их типы для ручного ввода
+    # Загрузка исходных признаков и их типов для ручного ввода
     feature_cols_raw, col_types, _ = load_columns_and_types()
 
+    # Заголовок и описание
     st.title("Программа обнаружения мошеннических транзакций")
     show_feature_descriptions()
+
+    # Боковая панель с настройками
     st.sidebar.header("Настройки")
     threshold = st.sidebar.slider(
         "Порог вероятности для классификации",
@@ -316,14 +419,16 @@ def main():
         st.sidebar.warning("Нижняя граница должна быть меньше верхней. Значения скорректированы.")
         low_color, high_color = min(low_color, high_color), max(low_color, high_color)
 
+    # Выбор режима работы
     mode = st.sidebar.radio("Режим работы", ["Ручной ввод", "Загрузка CSV", "История"])
 
+    # Инициализация состояния
     if 'transactions' not in st.session_state:
         st.session_state.transactions = []
     if 'results' not in st.session_state:
         st.session_state.results = None
 
-    #  Ручной ввод
+    # РУЧНОЙ ВВОД
     if mode == "Ручной ввод":
         st.header("Ручной ввод транзакции")
         st.markdown(
@@ -350,30 +455,24 @@ def main():
                         val = st.selectbox(f"{col}", unique_vals[col], key=f"sel_{col}")
                     else:
                         is_int = col_types.get(col, 'float') == 'int'
-                        # Устанавливаем более реалистичные значения по умолчанию
-                        if col == 'transaction_amount':
-                            default_val = 100.0
-                        elif col == 'distance_from_home':
-                            default_val = 10.0
-                        elif col == 'previous_transaction_gap':
-                            default_val = 24.0
-                        elif col == 'daily_transaction_count':
-                            default_val = 1
-                        elif col == 'monthly_spend':
-                            default_val = 500.0
-                        elif col == 'risk_score':
-                            default_val = 50
-                        elif col == 'customer_age':
-                            default_val = 35
-                        elif col == 'account_tenure_years':
-                            default_val = 2.0
-                        else:
-                            default_val = 0
+                        # Реалистичные значения по умолчанию
+                        default_values = {
+                            'transaction_amount': 100.0,
+                            'distance_from_home': 10.0,
+                            'previous_transaction_gap': 24.0,
+                            'daily_transaction_count': 1,
+                            'monthly_spend': 500.0,
+                            'risk_score': 50,
+                            'customer_age': 35,
+                            'account_tenure_years': 2.0
+                        }
+                        default_val = default_values.get(col, 0)
                         if is_int:
-                            val = st.number_input(f"{col}", min_value=0, step=1, value=default_val, format="%d", key=f"num_{col}")
-                        else:
-                            val = st.number_input(f"{col}", min_value=0.0, step=0.01, value=float(default_val), format="%.2f",
+                            val = st.number_input(f"{col}", min_value=0, step=1, value=default_val, format="%d",
                                                   key=f"num_{col}")
+                        else:
+                            val = st.number_input(f"{col}", min_value=0.0, step=0.01, value=float(default_val),
+                                                  format="%.2f", key=f"num_{col}")
                     input_data[col] = val
 
             submitted = st.form_submit_button("➕ Добавить транзакцию")
@@ -413,7 +512,7 @@ def main():
                     st.session_state.results = None
                     st.rerun()
 
-    # Загрузка CSV
+    # ЗАГРУЗКА CSV
     elif mode == "Загрузка CSV":
         st.header("Загрузка CSV-файла")
         uploaded_file = st.file_uploader("Выберите CSV файл с транзакциями", type="csv")
@@ -446,7 +545,7 @@ def main():
                             use_container_width=True
                         )
 
-    # История
+    # ИСТОРИЯ
     elif mode == "История":
         st.header("История предсказаний")
         history_df = load_history(limit=200)
@@ -462,9 +561,10 @@ def main():
         else:
             st.info("История предсказаний пуста.")
 
-    #  Отображение результатов
+    # ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ
     if st.session_state.results is not None and mode != "История":
         display_results(st.session_state.results, low_color, high_color)
+
 
 if __name__ == "__main__":
     main()
