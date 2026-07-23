@@ -266,8 +266,8 @@ def save_model_and_results(best_model, results_df, model_filename='fraud_model_b
     """
     joblib.dump(best_model, model_filename)
     results_df.to_csv(results_filename)
-    print(f"\n✅ Модель сохранена как '{model_filename}'")
-    print(f"✅ Результаты сравнения сохранены в '{results_filename}'")
+    print(f"\nМодель сохранена как '{model_filename}'")
+    print(f"Результаты сравнения сохранены в '{results_filename}'")
 
 
 def main():
