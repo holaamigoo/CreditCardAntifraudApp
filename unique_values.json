@@ -1,0 +1,89 @@
+{
+  "merchant_category": [
+    "Fashion",
+    "Restaurants",
+    "Gaming",
+    "Fuel",
+    "Entertainment",
+    "Healthcare",
+    "Travel",
+    "Grocery",
+    "Luxury",
+    "Electronics"
+  ],
+  "transaction_type": [
+    "POS",
+    "Online",
+    "ATM"
+  ],
+  "payment_method": [
+    "Debit Card",
+    "Digital Wallet",
+    "Credit Card"
+  ],
+  "city": [
+    "Melbourne",
+    "Birmingham",
+    "Chicago",
+    "Munich",
+    "Houston",
+    "London",
+    "Berlin",
+    "Manchester",
+    "Singapore",
+    "Montreal",
+    "Sydney",
+    "Paris",
+    "Lyon",
+    "Vancouver",
+    "Mumbai",
+    "Los Angeles",
+    "Bangalore",
+    "Delhi",
+    "Toronto",
+    "New York",
+    "Hyderabad"
+  ],
+  "country": [
+    "Australia",
+    "UK",
+    "USA",
+    "Germany",
+    "Singapore",
+    "Canada",
+    "France",
+    "India"
+  ],
+  "device_type": [
+    "Desktop",
+    "Tablet",
+    "Mobile"
+  ],
+  "operating_system": [
+    "Linux",
+    "MacOS",
+    "iOS",
+    "Android",
+    "Windows"
+  ],
+  "browser": [
+    "Edge",
+    "Chrome",
+    "Safari",
+    "Firefox"
+  ],
+  "card_type": [
+    "Visa",
+    "Mastercard",
+    "American Express"
+  ],
+  "merchant_risk_level": [
+    "Medium",
+    "Low",
+    "High"
+  ],
+  "transaction_status": [
+    "Approved",
+    "Declined"
+  ]
+}
